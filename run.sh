@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==============================================================================
 # run.sh — LARF 安全能力测试
-#   阶段 1: 并行跑 eval_student_model.py (temp=0 一次 + temp=1 三次)
+#   阶段 1: 并行跑 eval_student_model_usedatasets.py (temp=0 一次 + temp=1 三次)
 #   阶段 2: vLLM 起 Llama-Guard 服务 (port 8000, GPU 0)
 #   阶段 3: llama_guard.py 给 JSON 打分
 # ==============================================================================
@@ -23,7 +23,9 @@ EVAL_SUBDIR="eval_${DATE_TAG}"
 VLLM_LOG="${LARF_DIR}/_vllm_${DATE_TAG}.log"
 
 BATCH_SIZE=8
-BENCHES=(direct harm phi harmful_behaviors)
+# 与 run_safe_system_prompt_new.sh 一致: LARF/datasets/ 下 7 个 csv (Goal 列)
+DATA_DIR="datasets"
+BENCHES=(advbench ALERT HarmfulQA JBB-Behaviors PKU-SafeRLHF-30K sorry_bench_202503 harmbench)
 
 shopt -s nullglob
 MODELS=("${CKPT_ROOT}"/${CKPT_GLOB})
@@ -54,13 +56,15 @@ for i in "${!MODELS[@]}"; do
     LOG="${OUT_BASE}/logs/eval.log"
     echo ">>> [GPU ${GPU_ID}] ${NAME} → $(basename ${EVAL_PATH})"
     (
-        CUDA_VISIBLE_DEVICES=${GPU_ID} python eval_student_model.py \
+        CUDA_VISIBLE_DEVICES=${GPU_ID} python eval_student_model_usedatasets.py \
             --model_path "${EVAL_PATH}" --output_dir "${OUT_BASE}/temp_0" \
+            --data_dir "${DATA_DIR}" \
             --temperature 0 --benches "${BENCHES[@]}"
         for r in 1 2 3; do
             sub="temp_1"; [ "$r" -gt 1 ] && sub="temp_1_run${r}"
-            CUDA_VISIBLE_DEVICES=${GPU_ID} python eval_student_model.py \
+            CUDA_VISIBLE_DEVICES=${GPU_ID} python eval_student_model_usedatasets.py \
                 --model_path "${EVAL_PATH}" --output_dir "${OUT_BASE}/${sub}" \
+                --data_dir "${DATA_DIR}" \
                 --temperature 1 --benches "${BENCHES[@]}"
         done
     ) > "${LOG}" 2>&1 &
