@@ -32,8 +32,11 @@ BENCHES=(advbench ALERT HarmfulQA JBB-Behaviors PKU-SafeRLHF-30K sorry_bench_202
 # ------------- 解析模型列表 -------------
 MODELS=()
 if [ "$1" = "-f" ] && [ -n "$2" ]; then
-    while IFS= read -r line; do
-        line="${line%%#*}"; line="${line//$'\r'/}"; line="${line## }"; line="${line%% }"
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%%#*}"
+        line="${line//$'\r'/}"
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
         [ -n "$line" ] && MODELS+=("$line")
     done < "$2"
 elif [ "$#" -gt 0 ]; then
@@ -63,7 +66,13 @@ EVAL_BASES=()
 for i in "${!MODELS[@]}"; do
     MODEL_PATH="${MODELS[$i]}"
     GPU_ID=$(( i % BATCH_SIZE ))
-    NAME=$(basename "${MODEL_PATH%/}")
+    _MP="${MODEL_PATH%/}"
+    NAME=$(basename "${_MP}")
+    # 若 basename 形如 checkpoint-XXX, 拼上上一级目录名以避免不同模型同名冲突
+    if [[ "${NAME}" == checkpoint-* ]]; then
+        PARENT=$(basename "$(dirname "${_MP}")")
+        NAME="${PARENT}-${NAME}"
+    fi
 
     OUT_BASE="${OUTPUT_ROOT}/${NAME}/${EVAL_SUBDIR}"
     EVAL_BASES+=("${OUT_BASE}")
