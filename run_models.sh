@@ -25,7 +25,8 @@ EVAL_SUBDIR="eval_${DATE_TAG}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-/mnt/hdfs/tiktok_aiic/user/lihao.612/sf_ckpts/_models_eval_${DATE_TAG}}"
 VLLM_LOG="${LARF_DIR}/_vllm_${DATE_TAG}.log"
 
-BATCH_SIZE="${BATCH_SIZE:-8}"
+BATCH_SIZE="${BATCH_SIZE:-8}"             # 并行模型数 (跨 GPU)
+EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-32}"  # 单卡 model.generate 的样本数
 DATA_DIR="${DATA_DIR:-datasets}"
 BENCHES=(advbench ALERT HarmfulQA JBB-Behaviors PKU-SafeRLHF-30K sorry_bench_202503 harmbench)
 
@@ -82,13 +83,13 @@ for i in "${!MODELS[@]}"; do
     (
         CUDA_VISIBLE_DEVICES=${GPU_ID} python eval_student_model_usedatasets.py \
             --model_path "${MODEL_PATH}" --output_dir "${OUT_BASE}/temp_0" \
-            --data_dir "${DATA_DIR}" \
+            --data_dir "${DATA_DIR}" --batch_size ${EVAL_BATCH_SIZE} \
             --temperature 0 --benches "${BENCHES[@]}"
         for r in 1 2 3; do
             sub="temp_1"; [ "$r" -gt 1 ] && sub="temp_1_run${r}"
             CUDA_VISIBLE_DEVICES=${GPU_ID} python eval_student_model_usedatasets.py \
                 --model_path "${MODEL_PATH}" --output_dir "${OUT_BASE}/${sub}" \
-                --data_dir "${DATA_DIR}" \
+                --data_dir "${DATA_DIR}" --batch_size ${EVAL_BATCH_SIZE} \
                 --temperature 1 --benches "${BENCHES[@]}"
         done
     ) > "${LOG}" 2>&1 &

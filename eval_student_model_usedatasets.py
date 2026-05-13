@@ -94,8 +94,21 @@ def get_goals(csv_path):
     return df['Goal'].dropna().tolist()
 
 
-def evaluate_model(model, tokenizer, goals, device, temperature):
-    """对一组问题生成回复"""
+def _render_prompt(tokenizer, goal):
+    messages = [{"role": "user", "content": goal}]
+    try:
+        return tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=False,
+            enable_thinking=False,
+        )
+    except TypeError:
+        return tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=False,
+        )
+
+
+def evaluate_model(model, tokenizer, goals, device, temperature, batch_size=32):
+    """对一组问题批量生成回复 (left-padded so all rows share input_len)。"""
     results = []
 
     generation_kwargs = {
@@ -109,25 +122,24 @@ def evaluate_model(model, tokenizer, goals, device, temperature):
         generation_kwargs["do_sample"] = True
         generation_kwargs["temperature"] = temperature
 
-    for goal in tqdm(goals, desc=f"Generating responses (Temp: {temperature})"):
-        messages = [{"role": "user", "content": goal}]
-
-        try:
-            text = tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, tokenize=False,
-                enable_thinking=False,
-            )
-        except TypeError:
-            text = tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, tokenize=False,
-            )
-
-        inputs = tokenizer([text], return_tensors="pt").to(device)
-        with torch.no_grad():
-            outputs = model.generate(**inputs, **generation_kwargs)
-        input_len = inputs.input_ids.shape[1]
-        response = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True)
-        results.append({'instruction': goal, 'output': response})
+    # Decoder-only LM 必须左 padding, 否则 attention_mask 之后的生成会从 pad 起
+    orig_padding_side = tokenizer.padding_side
+    tokenizer.padding_side = "left"
+    try:
+        n = len(goals)
+        for i in tqdm(range(0, n, batch_size),
+                      desc=f"Generating (Temp: {temperature}, bs={batch_size})"):
+            batch_goals = goals[i:i + batch_size]
+            texts = [_render_prompt(tokenizer, g) for g in batch_goals]
+            inputs = tokenizer(texts, return_tensors="pt", padding=True).to(device)
+            with torch.no_grad():
+                outputs = model.generate(**inputs, **generation_kwargs)
+            input_len = inputs.input_ids.shape[1]
+            for goal, row in zip(batch_goals, outputs):
+                response = tokenizer.decode(row[input_len:], skip_special_tokens=True)
+                results.append({'instruction': goal, 'output': response})
+    finally:
+        tokenizer.padding_side = orig_padding_side
 
     return results
 
@@ -149,6 +161,8 @@ def main():
                         help='运行设备')
     parser.add_argument('--temperature', type=float, default=0.0,
                         help='生成温度。0 表示贪心解码, >0 表示采样')
+    parser.add_argument('--batch_size', type=int, default=32,
+                        help='单次 model.generate 处理的样本数 (left-padded). 越大越快, 受显存约束。')
     args = parser.parse_args()
 
     # 先把所有 bench 解析掉, 早失败胜过跑了一半才崩
@@ -177,7 +191,8 @@ def main():
         goals = get_goals(csv_path)
         print(f"Loaded {len(goals)} test cases")
 
-        results = evaluate_model(model, tokenizer, goals, args.device, args.temperature)
+        results = evaluate_model(model, tokenizer, goals, args.device, args.temperature,
+                                 batch_size=args.batch_size)
 
         out_file = os.path.join(args.output_dir, f"{model_name}-temp{args.temperature}-{stem}.json")
         with open(out_file, 'w', encoding='utf-8') as f:
