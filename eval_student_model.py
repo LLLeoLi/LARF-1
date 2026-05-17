@@ -54,20 +54,11 @@ def evaluate_model(model, tokenizer, goals, device, temperature):
         ]
         
         # 应用聊天模板
-        try:
-            text = tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=False,
-                enable_thinking=False  # 对 Qwen3 生效
-            )
-        except TypeError:
-            # 兼容不支持 enable_thinking 的模型
-            text = tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=False
-            )
+        text = tokenizer.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=False
+        )
         
         # 生成回复
         inputs = tokenizer([text], return_tensors="pt").to(device)

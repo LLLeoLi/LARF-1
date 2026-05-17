@@ -96,15 +96,9 @@ def get_goals(csv_path):
 
 def _render_prompt(tokenizer, goal):
     messages = [{"role": "user", "content": goal}]
-    try:
-        return tokenizer.apply_chat_template(
-            messages, add_generation_prompt=True, tokenize=False,
-            enable_thinking=False,
-        )
-    except TypeError:
-        return tokenizer.apply_chat_template(
-            messages, add_generation_prompt=True, tokenize=False,
-        )
+    return tokenizer.apply_chat_template(
+        messages, add_generation_prompt=True, tokenize=False,
+    )
 
 
 def evaluate_model(model, tokenizer, goals, device, temperature, batch_size=32):
