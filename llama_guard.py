@@ -48,6 +48,8 @@ def evaluate_output(item, client, model_id):
 def main():
     parser = argparse.ArgumentParser(description="Run Llama Guard Evaluation")
     parser.add_argument('--input_dir', type=str, required=True, help='需要评测的包含 JSON 的根目录')
+    parser.add_argument('--skip_pattern', type=str, default='',
+                        help='文件名包含该子串的 *.json 会被跳过 (例如 sorry_bench, 用于把这些文件留给别的 judge); 空串=不跳过')
     args = parser.parse_args()
 
     # 初始化客户端并获取模型 ID
@@ -62,7 +64,10 @@ def main():
         for file in files:
             if not file.endswith('.json'):
                 continue
-            
+            if args.skip_pattern and args.skip_pattern in file:
+                print(f"[{file}] 文件名匹配 --skip_pattern='{args.skip_pattern}', 跳过。")
+                continue
+
             file_path = os.path.join(root, file)
             with open(file_path, 'r', encoding='utf-8') as f:
                 output_list = json.load(f)
