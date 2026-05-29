@@ -101,12 +101,13 @@ def _render_prompt(tokenizer, goal):
     )
 
 
-def evaluate_model(model, tokenizer, goals, device, temperature, batch_size=32):
+def evaluate_model(model, tokenizer, goals, device, temperature, batch_size=32,
+                   max_new_tokens=64):
     """对一组问题批量生成回复 (left-padded so all rows share input_len)。"""
     results = []
 
     generation_kwargs = {
-        "max_new_tokens": 64,
+        "max_new_tokens": max_new_tokens,
         "pad_token_id": tokenizer.pad_token_id,
         "eos_token_id": tokenizer.eos_token_id,
     }
@@ -157,6 +158,8 @@ def main():
                         help='生成温度。0 表示贪心解码, >0 表示采样')
     parser.add_argument('--batch_size', type=int, default=32,
                         help='单次 model.generate 处理的样本数 (left-padded). 越大越快, 受显存约束。')
+    parser.add_argument('--max_new_tokens', type=int, default=64,
+                        help='每条回复最多生成多少 token (默认 64; over-refusal 评测建议调大, 如 256)')
     args = parser.parse_args()
 
     # 先把所有 bench 解析掉, 早失败胜过跑了一半才崩
@@ -186,7 +189,7 @@ def main():
         print(f"Loaded {len(goals)} test cases")
 
         results = evaluate_model(model, tokenizer, goals, args.device, args.temperature,
-                                 batch_size=args.batch_size)
+                                 batch_size=args.batch_size, max_new_tokens=args.max_new_tokens)
 
         out_file = os.path.join(args.output_dir, f"{model_name}-temp{args.temperature}-{stem}.json")
         with open(out_file, 'w', encoding='utf-8') as f:
